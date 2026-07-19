@@ -1,0 +1,76 @@
+name: plex-remote-probe
+
+on:
+  workflow_dispatch:
+    inputs:
+      rating_key:
+        description: "Plex ratingKey of the movie to stream"
+        required: true
+        default: "450427"
+      part_key:
+        description: "Plex part key (path only)"
+        required: true
+        default: "/library/parts/625115/1776971725/file.mkv"
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe Plex from the public internet
+        env:
+          PLEX_URL: ${{ secrets.PLEX_URL }}
+          PLEX_TOKEN: ${{ secrets.PLEX_TOKEN }}
+          RK: ${{ inputs.rating_key }}
+          PART: ${{ inputs.part_key }}
+        run: |
+          set -uo pipefail
+          H="X-Plex-Token: $PLEX_TOKEN"
+          HOSTN=$(echo "$PLEX_URL" | sed -E 's#https?://([^:/]+).*#\1#')
+          IP=$(getent hosts "$HOSTN" | awk '{print $1}' | head -1)
+
+          echo "runner IP $(curl -s --max-time 10 https://api.ipify.org)  ->  server $IP"
+          echo
+
+          echo "=== WHERE DO THE SECONDS GO? (3 runs of the same tiny 208-byte call) ==="
+          printf '%-6s %9s %9s %9s %9s %9s\n' run dns tcp tls firstbyte total
+          for i in 1 2 3; do
+            read dns tcp tls ttfb tot code <<<"$(curl -s -o /dev/null \
+              -w '%{time_namelookup} %{time_connect} %{time_appconnect} %{time_starttransfer} %{time_total} %{http_code}' \
+              --max-time 60 -H "$H" "$PLEX_URL/identity")"
+            printf '%-6s %9s %9s %9s %9s %9s   HTTP %s\n' "$i" "$dns" "$tcp" "$tls" "$ttfb" "$tot" "$code"
+          done
+          echo "  (tcp = TCP handshake, tls = TLS done, firstbyte = server started replying)"
+          echo
+
+          echo "=== SUSTAINED THROUGHPUT: pull a 1.3 MB artwork image ==="
+          read code tot spd <<<"$(curl -s -o /dev/null -w '%{http_code} %{time_total} %{speed_download}' \
+            --max-time 90 -H "$H" "$PLEX_URL/library/metadata/321599/art/1782844706")"
+          awk -v c="$code" -v t="$tot" -v s="$spd" 'BEGIN{printf "HTTP %s  %ss  %.2f Mbps\n", c, t, s*8/1000000}'
+          echo
+
+          echo "=== DIRECT PLAY: pull 20 MB of the real movie file (needs 8.1 Mbps) ==="
+          # Identify as a real Plex client: Plex runs a streaming decision for WAN
+          # clients and 500s if the caller sends no client identity.
+          CID="probe-$RANDOM"
+          read code tot spd size <<<"$(curl -s -o /dev/null \
+            -w '%{http_code} %{time_total} %{speed_download} %{size_download}' \
+            --max-time 100 -H "$H" -H "Range: bytes=0-20971519" \
+            -H "X-Plex-Client-Identifier: $CID" \
+            -H "X-Plex-Product: Plex for Apple TV" \
+            -H "X-Plex-Version: 8.10" \
+            -H "X-Plex-Platform: tvOS" \
+            -H "X-Plex-Platform-Version: 17.0" \
+            -H "X-Plex-Device: Apple TV" \
+            -H "X-Plex-Model: 3" \
+            -H "X-Plex-Session-Identifier: $CID" \
+            "$PLEX_URL$PART")"
+          awk -v c="$code" -v t="$tot" -v s="$spd" -v z="$size" 'BEGIN{
+            printf "HTTP %s  got %.1f MB in %ss  =  %.2f Mbps\n", c, z/1048576, t, s*8/1000000
+            printf "VERDICT: %s\n", (s*8/1000000 >= 8.1) ? "PASS - can direct play" : "FAIL - cannot direct play"
+          }'
+          echo
+
+          echo "=== Is it Plex, or is it the whole box? Same test, plain HTTP on 32400 ==="
+          read code tot <<<"$(curl -s -o /dev/null -w '%{http_code} %{time_total}' --max-time 45 \
+            -H "$H" "http://$IP:32400/identity")"
+          echo "http://IP:32400/identity   HTTP $code   ${tot}s"

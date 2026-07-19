@@ -1,0 +1,225 @@
+name: plex-remote-check
+
+# The health check that Archives' button and the 12-hourly schedule both fire.
+# It walks the exact journey a remote user walks: connect -> open a movie ->
+# actually stream video. It prints one machine-readable VERDICT_JSON line that
+# devi.py parses. Everything else in the log is for a human reading the run.
+
+# ============================ PUBLIC REPO -- READ THIS ============================
+# This repository is PUBLIC so its Actions minutes are free (the private repo hit the
+# account Actions budget on 2026-07-14 and every run failed without ever reaching Plex,
+# leaving remote-Plex monitoring blind for 5 days).
+#
+# CONSEQUENCE: every line this workflow logs is WORLD-READABLE, FOREVER.
+#
+# GitHub masks a registered secret if it appears verbatim in a log. It CANNOT mask a
+# value DERIVED from a secret -- a substring, a parsed hostname, a base64, a hash.
+# probe.yml derives the bare hostname from $PLEX_URL for its DNS timing. That derived
+# value is deliberately never printed.
+#
+#   *** NEVER echo, print, or write to a summary/output any value derived from
+#   *** PLEX_URL or PLEX_TOKEN. Doing so publishes the Plex endpoint permanently.
+#
+# Keep this repo to the probe workflows only. Nothing else belongs here.
+# =================================================================================
+on:
+  workflow_dispatch:
+    inputs:
+      rating_key:
+        description: "Plex ratingKey to stream (a real HEVC movie)"
+        required: false
+        default: "450427"
+  schedule:
+    # Every 3 hours (JD, 2026-07-19). Free on a public repo, so the old 12-hourly
+    # cadence no longer needs to be frugal. Alveron still dispatches on demand too.
+    - cron: "0 */3 * * *"
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Check Plex from outside the house
+        env:
+          PLEX_URL: ${{ secrets.PLEX_URL }}
+          PLEX_TOKEN: ${{ secrets.PLEX_TOKEN }}
+          RK: ${{ inputs.rating_key || '450427' }}
+        run: |
+          set -uo pipefail
+          # Must be unique per run: $RANDOM alone repeats across runners, and Plex
+          # keys its streaming session off this.
+          CID="alveron-${GITHUB_RUN_ID}-${RANDOM}"
+          A=(-H "X-Plex-Token: $PLEX_TOKEN" -H "X-Plex-Client-Identifier: $CID"
+             -H "X-Plex-Product: Plex Web" -H "X-Plex-Platform: Chrome"
+             -H "X-Plex-Session-Identifier: $CID")
+          B="$PLEX_URL/video/:/transcode/universal"
+          fails=""
+
+          # Seconds to let Plex's transcoder run before we time the download, and how many
+          # segments to time. Plex uses ~1s HLS segments, so 20 of them is 20s of playback
+          # and a few MB -- a big enough sample that one slow TCP ramp cannot skew it, and
+          # small enough to stay well inside the job timeout even on a bad link.
+          WARMUP_S=30
+          SEGS_N=20
+          # Parallel connections used to measure capacity. A single connection from this
+          # runner measures the 310ms path to GitHub, not the house -- see the long note
+          # at the download step, and throughput.yml.
+          PAR_N=6
+
+          # ---- 1. Can a remote client connect at all? -----------------------
+          # This is the one that caught the router's DoS protection: the time was
+          # all in time_connect, before Plex ever saw the request.
+          connect_fails=0; slowest=0; sum=0
+          for i in 1 2 3; do
+            read tcp code <<<"$(curl -s -o /dev/null -w '%{time_connect} %{http_code}' \
+                                --max-time 25 "${A[@]}" "$PLEX_URL/identity")"
+            echo "  connect $i: ${tcp}s (HTTP $code)"
+            [ "$code" != "200" ] && connect_fails=$((connect_fails+1))
+            slowest=$(awk -v a="$slowest" -v b="$tcp" 'BEGIN{print (b>a)?b:a}')
+            sum=$(awk -v a="$sum" -v b="$tcp" 'BEGIN{print a+b}')
+          done
+          avg=$(awk -v s="$sum" 'BEGIN{printf "%.2f", s/3}')
+          [ "$connect_fails" -gt 0 ] && fails="$fails;cannot connect ($connect_fails of 3 attempts failed)"
+          awk -v s="$slowest" 'BEGIN{exit !(s>5)}' && fails="$fails;connections are slow (worst ${slowest}s)"
+
+          # ---- 2. Does opening a movie work? --------------------------------
+          # This is George's spinner: the detail page fires many parallel requests.
+          read dcode dtime <<<"$(curl -s -o /dev/null -w '%{http_code} %{time_total}' --max-time 30 "${A[@]}" \
+            "$PLEX_URL/library/metadata/$RK?includeExtras=1&includeRelated=1&includeChapters=1")"
+          echo "  open movie: HTTP $dcode in ${dtime}s"
+          [ "$dcode" != "200" ] && fails="$fails;opening a movie failed (HTTP $dcode)"
+
+          # ---- 3. Does video actually PLAY? ---------------------------------
+          # A black screen = the stream starts but no video arrives. So we pull real
+          # segments and check the MPEG-TS sync byte, not just the HTTP status.
+          mbps=0; realtime=0; segs=0
+          Q="path=%2Flibrary%2Fmetadata%2F$RK&mediaIndex=0&partIndex=0&protocol=hls&directPlay=0&directStream=1&fastSeek=1&location=wan&maxVideoBitrate=12000&videoQuality=100&videoResolution=1920x1080&session=$CID&X-Plex-Client-Identifier=$CID"
+
+          # A real client ALWAYS asks Plex for a streaming decision before it starts a
+          # stream. Skip this and Plex answers "Denying access due to session lacking
+          # decision" (HTTP 400). Doing it properly also means we now test the decision
+          # path itself — which is where "this file is unplayable for you" would surface.
+          dec=$(curl -s -o /tmp/dec.xml -w '%{http_code}' --max-time 45 "${A[@]}" "$B/decision?$Q")
+          verdict_text=$(grep -oE 'generalDecisionText="[^"]*"' /tmp/dec.xml | head -1 | cut -d'"' -f2)
+          echo "  streaming decision: HTTP $dec ${verdict_text:+- $verdict_text}"
+          if [ "$dec" != "200" ]; then
+            fails="$fails;Plex refused to prepare the stream (HTTP $dec)"
+          fi
+
+          scode=000
+          for i in 1 2 3; do
+            scode=$(curl -s -o /tmp/master.m3u8 -w '%{http_code}' --max-time 60 "${A[@]}" "$B/start.m3u8?$Q")
+            echo "  start stream (attempt $i): HTTP $scode"
+            [ "$scode" = "200" ] && break
+            sleep 8
+          done
+          if [ "$scode" != "200" ]; then
+            fails="$fails;could not start a stream (HTTP $scode)"
+          else
+            SUB=$(grep -v '^#' /tmp/master.m3u8 | head -1 | tr -d '\r')
+            case "$SUB" in http*) SUBURL="$SUB";; /*) SUBURL="$PLEX_URL$SUB";; *) SUBURL="$B/$SUB";; esac
+            n=0
+            for i in $(seq 1 10); do
+              curl -s -o /tmp/idx.m3u8 --max-time 45 "${A[@]}" "$SUBURL"
+              n=$(grep -c '\.ts' /tmp/idx.m3u8 || true)
+              [ "$n" -gt 0 ] && break
+              sleep 4
+            done
+            if [ "$n" -eq 0 ]; then
+              fails="$fails;stream started but produced no video (black screen)"
+            else
+              # Let the transcoder get AHEAD before timing anything, or we measure Plex's
+              # ENCODER instead of the network. Plex serves HLS live: it will list a
+              # segment and then hold the HTTP request open while it finishes encoding it.
+              #
+              # We cannot detect the backlog from the playlist: Plex lists every segment
+              # of the movie up front (a 2h film shows ~6800 of them), so "how many are
+              # listed" tells us nothing about how many are actually ENCODED. Hence a flat
+              # warm-up. By the time it elapses the opening segments are long since on
+              # disk, so fetching them measures the pipe and nothing else.
+              echo "  playlist lists $n segments; letting the transcoder warm up ${WARMUP_S}s"
+              sleep "$WARMUP_S"
+
+              # Real playback seconds come from the playlist's own EXTINF durations, for
+              # exactly the segments we fetch. The old code hardcoded "4 segments x 4s =
+              # 16s" -- but Plex uses ~1s segments here, so it overstated realtime by 4x
+              # and was calling a badly stalling stream "0.96x, basically fine".
+              want=$(awk -F: -v n="$SEGS_N" '/^#EXTINF/{d+=$2; c++; if(c==n) exit} END{printf "%.2f", d}' /tmp/idx.m3u8)
+              awk -v w="$want" 'BEGIN{exit !(w<=0)}' && want=0
+
+              # Fetch the segments in PARALLEL, and measure CAPACITY -- what the house can
+              # actually push to a remote viewer -- not the speed of one TCP connection.
+              #
+              # This distinction is the whole ballgame. This runner sits in a US datacentre,
+              # ~310ms from Melbourne, and a single TCP stream over a long path is capped at
+              # roughly window/RTT no matter how healthy the link is. Measured 2026-07-14:
+              # the SAME segments pulled one at a time gave 4.81 Mbps, but six at a time gave
+              # 23.05 Mbps. Nothing about the house changed between those two numbers -- only
+              # the number of connections. So a serial figure from here says almost nothing
+              # about whether people can watch; it mostly measures the distance to GitHub.
+              # A viewer in Australia (~20ms) never hits that ceiling.
+              #
+              # Capacity is the honest question: can the house sustain more than the stream's
+              # own bitrate? If yes, video plays. See throughput.yml for the serial-vs-parallel
+              # diagnostic that established this.
+              : > /tmp/urls.txt
+              for seg in $(grep '\.ts' /tmp/idx.m3u8 | head -"$SEGS_N" | tr -d '\r'); do
+                case "$seg" in http*) echo "$seg";; /*) echo "$PLEX_URL$seg";; *) echo "$(dirname "$SUBURL")/$seg";; esac
+              done >> /tmp/urls.txt
+
+              rm -rf /tmp/segs && mkdir -p /tmp/segs
+              start=$(date +%s%N)
+              nl -n rz -w4 /tmp/urls.txt | xargs -P "$PAR_N" -n2 sh -c \
+                'curl -s -o "/tmp/segs/$1.ts" --max-time 90 \
+                   -H "X-Plex-Token: '"$PLEX_TOKEN"'" -H "X-Plex-Client-Identifier: '"$CID"'" \
+                   -H "X-Plex-Product: Plex Web" -H "X-Plex-Platform: Chrome" "$2"' sh
+              end=$(date +%s%N)
+              el=$(awk -v a="$start" -v b="$end" 'BEGIN{printf "%.2f", (b-a)/1000000000}')
+
+              total=0; got=0
+              for f in /tmp/segs/*.ts; do
+                [ -e "$f" ] || continue
+                got=$((got+1))
+                total=$((total + $(wc -c < "$f")))
+                # 0x47 is the MPEG-TS sync byte. Anything else is not video.
+                [ "$(head -c 1 "$f" | xxd -p 2>/dev/null)" = "47" ] && segs=$((segs+1))
+              done
+
+              # mbps = what the house CAN push. need = what this stream actually costs.
+              mbps=$(awk -v t="$total" -v e="$el" 'BEGIN{printf "%.2f", (e>0)? (t*8)/(e*1000000) : 0}')
+              need=$(awk -v t="$total" -v w="$want" 'BEGIN{printf "%.2f", (w>0)? (t*8)/(w*1000000) : 0}')
+              # Headroom: capacity divided by what the video costs. >1 means it plays.
+              realtime=$(awk -v c="$mbps" -v n="$need" 'BEGIN{printf "%.2f", (n>0)? c/n : 0}')
+              echo "  pulled $segs/$got video segments, $(awk -v t="$total" 'BEGIN{printf "%.1f", t/1048576}') MB, ${PAR_N} at a time"
+              echo "  the house pushed ${mbps} Mbps; this stream costs ${need} Mbps -> ${realtime}x headroom"
+
+              # Black screen: judge the segments we ACTUALLY fetched, not a fixed count.
+              if [ "$got" -eq 0 ] || [ "$segs" -eq 0 ]; then
+                fails="$fails;stream delivered no usable video (black screen)"
+              elif [ "$segs" -lt "$got" ]; then
+                fails="$fails;stream delivered corrupt video ($segs of $got segments were valid)"
+              fi
+
+              # Only fail when the house genuinely cannot carry the video it is being asked
+              # to send. The dead-band is deliberately wide: this figure is the noisiest thing
+              # here, and an alert that fires on noise is one JD learns to ignore. A real
+              # outage does not show up as slightly-low headroom -- it shows up as failed
+              # connects or no segments, and those are hard failures above.
+              if awk -v n="$need" 'BEGIN{exit !(n<=0)}'; then
+                echo "  NOTE: could not read segment durations - judging reachability only, not speed"
+              else
+                awk -v r="$realtime" 'BEGIN{exit !(r<1.0)}' && \
+                  fails="$fails;the house cannot push this stream fast enough (${mbps} Mbps available, ${need} Mbps needed) - it would stall"
+                awk -v r="$realtime" 'BEGIN{exit !(r>=1.0 && r<1.5)}' && \
+                  echo "  NOTE: only ${realtime}x headroom - playable, but thin. Not alerting."
+              fi
+            fi
+          fi
+          curl -s -o /dev/null "${A[@]}" "$B/stop?session=$CID" || true
+
+          # ---- verdict ------------------------------------------------------
+          fails="${fails#;}"
+          if [ -z "$fails" ]; then verdict=PASS; else verdict=FAIL; fi
+          echo
+          echo "VERDICT_JSON {\"verdict\":\"$verdict\",\"connect_avg_s\":$avg,\"connect_worst_s\":$slowest,\"connect_failures\":$connect_fails,\"detail_http\":$dcode,\"detail_s\":$dtime,\"stream_segments\":$segs,\"stream_mbps\":$mbps,\"stream_realtime\":$realtime,\"reasons\":\"$fails\"}"
+          [ "$verdict" = "PASS" ]
