@@ -1,6 +1,6 @@
 # Forum
 
-A community forum built with Django. The name is a placeholder (`FORUM_SITE_NAME`) until one is chosen.
+A community forum for resellers, built with Django. The name is a placeholder (`FORUM_SITE_NAME`) until one is chosen.
 The visual identity follows the shesosavvy palette.
 
 ## Run it locally

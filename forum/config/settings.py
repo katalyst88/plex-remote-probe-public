@@ -32,7 +32,7 @@ CSRF_TRUSTED_ORIGINS = env_list("DJANGO_CSRF_TRUSTED_ORIGINS")
 
 # Site identity. The name is a placeholder until one is chosen.
 SITE_NAME = os.environ.get("FORUM_SITE_NAME", "Community Forum")
-SITE_TAGLINE = os.environ.get("FORUM_SITE_TAGLINE", "Ask, share and learn together.")
+SITE_TAGLINE = os.environ.get("FORUM_SITE_TAGLINE", "Sourcing, pricing and selling, together.")
 
 INSTALLED_APPS = [
     "django.contrib.admin",

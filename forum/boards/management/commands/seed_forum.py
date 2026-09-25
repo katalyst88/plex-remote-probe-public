@@ -6,10 +6,14 @@ from boards.models import Category, Post, Thread
 
 CATEGORIES = [
     ("Announcements", "announcements", "News and updates from the team.", {"staff_only_posting": True}),
-    ("Introductions", "introductions", "New here? Say hello and tell us what you're working on.", {}),
-    ("General discussion", "general", "Anything and everything.", {}),
-    ("Help & questions", "help", "Stuck on something? Ask the community.", {}),
-    ("Members' lounge", "lounge", "Deeper dives for paying members.", {"members_only": True}),
+    ("Introductions", "introductions", "New here? Say hello, what you sell and where.", {}),
+    ("Sourcing", "sourcing", "Op shops, garage sales, auctions, bulk lots: where and how you find stock.", {}),
+    ("Pricing & valuation", "pricing", "What's it worth? Get a second opinion before you list.", {}),
+    ("Listing & photos", "listing", "Titles, descriptions, photography and getting found in search.", {}),
+    ("Platforms", "platforms", "eBay, Depop, Vinted, Marketplace, Poshmark and the rest: fees, rules, algorithms.", {}),
+    ("Shipping & packaging", "shipping", "Postage costs, carriers, packaging and dealing with returns.", {}),
+    ("Wins & sold", "wins", "Show off your best flips and what sold this week.", {}),
+    ("Members' lounge", "lounge", "Deeper dives, sell-through data and strategy for paying members.", {"members_only": True}),
 ]
 
 
@@ -57,13 +61,18 @@ class Command(BaseCommand):
         )
         thread(
             "introductions", mia, "Hi from Brisbane 👋",
-            "Been reselling vintage for about two years. Keen to swap tips on pricing!",
+            "Been reselling vintage for about two years, mostly on Depop and eBay. Keen to swap tips on pricing!",
             replies=[(sam, "Welcome Mia! What's your best-selling category?"),
                      (mia, "Denim, by a mile. Anything pre-2000 flies.")],
         )
         thread(
-            "help", sam, "How do you work out a listing price?",
+            "pricing", sam, "How do you work out a listing price?",
             "I keep underpricing things. Do you use a formula or just look at sold listings?",
             replies=[(mia, "> Do you use a formula\n\nSold listings from the last 90 days, then knock 10% off for a quick sale.")],
+        )
+        thread(
+            "wins", mia, "Op shop Levi's 501 → $95",
+            "Paid $8 on Saturday, sold Tuesday. Made in USA tag was the giveaway, always check the inside label!",
+            replies=[(sam, "Nice flip! Which platform?"), (mia, "Depop. Took about 20 minutes to list.")],
         )
         self.stdout.write(self.style.SUCCESS("Demo users (password: demo-password-123) and threads created."))
