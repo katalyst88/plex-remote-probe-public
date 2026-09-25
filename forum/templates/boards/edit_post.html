@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Edit post · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="form-card wide">
+  <div class="crumbs"><a href="{{ post.thread.get_absolute_url }}">{{ post.thread.title }}</a> /</div>
+  <h1>Edit {% if is_opening %}thread{% else %}reply{% endif %}</h1>
+  <form class="card card-pad" method="post">
+    {% csrf_token %}
+    {% if is_opening %}
+    <div class="field">
+      <label for="id_title">Title</label>
+      <input type="text" id="id_title" name="title" maxlength="160" required value="{{ request.POST.title|default:post.thread.title }}">
+      {% if title_error %}<ul class="errorlist"><li>{{ title_error }}</li></ul>{% endif %}
+    </div>
+    {% endif %}
+    {% include "_field.html" with field=form.body %}
+    <div class="form-actions"><button class="btn" type="submit">Save changes</button><a href="{% url 'boards:post' post.pk %}">Cancel</a></div>
+  </form>
+</div>
+{% endblock %}

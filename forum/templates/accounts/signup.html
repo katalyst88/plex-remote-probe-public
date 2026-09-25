@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Join · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="form-card">
+  <h1>Create your account</h1>
+  <form class="card card-pad" method="post">
+    {% csrf_token %}
+    {{ form.non_field_errors }}
+    {% for field in form %}{% include "_field.html" %}{% endfor %}
+    <div class="form-actions"><button class="btn" type="submit">Create account</button><span class="helptext">Already a member? <a href="{% url 'accounts:login' %}">Log in</a></span></div>
+  </form>
+</div>
+{% endblock %}

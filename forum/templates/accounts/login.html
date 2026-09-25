@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Log in · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="form-card">
+  <h1>Log in</h1>
+  <form class="card card-pad" method="post">
+    {% csrf_token %}
+    {% if form.non_field_errors %}<ul class="errorlist">{% for e in form.non_field_errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
+    {% include "_field.html" with field=form.username %}
+    {% include "_field.html" with field=form.password %}
+    <input type="hidden" name="next" value="{{ next }}">
+    <div class="form-actions"><button class="btn" type="submit">Log in</button><span class="helptext">New here? <a href="{% url 'accounts:signup' %}">Create an account</a></span></div>
+  </form>
+</div>
+{% endblock %}

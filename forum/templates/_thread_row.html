@@ -1,0 +1,17 @@
+{% load humanize %}<li class="thread-row">
+  <span class="avatar" aria-hidden="true">{{ thread.author.initials }}</span>
+  <div>
+    {% if thread.is_pinned %}<span class="pill">Pinned</span>{% endif %}
+    {% if thread.is_locked %}<span class="pill plum">Locked</span>{% endif %}
+    <a class="title" href="{{ thread.get_absolute_url }}">{{ thread.title }}</a>
+    <div class="sub">
+      by <a href="{{ thread.author.get_absolute_url }}">{{ thread.author.name }}</a>
+      {% if show_category %}in <a href="{{ thread.category.get_absolute_url }}">{{ thread.category.name }}</a>{% endif %}
+      &middot; {{ thread.created_at|naturaltime }}
+    </div>
+  </div>
+  <div class="counts">
+    <b>{{ thread.reply_count }}</b> {{ thread.reply_count|pluralize:"reply,replies" }} &middot; <b>{{ thread.view_count }}</b> views
+    <div>active {{ thread.last_activity_at|naturaltime }}</div>
+  </div>
+</li>

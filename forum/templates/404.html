@@ -1,0 +1,5 @@
+{% extends "base.html" %}
+{% block title %}Not found · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="card empty"><h2>Nothing here</h2><p>That page doesn't exist or was removed.</p><a class="btn" href="{% url 'boards:index' %}">Back to the forum</a></div>
+{% endblock %}

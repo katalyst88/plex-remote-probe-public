@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Search · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Search</h1>{% if query %}<p>Results for &ldquo;{{ query }}&rdquo;</p>{% endif %}</div></div>
+{% if page is None %}
+  <div class="card empty">Type at least two characters in the search box above.</div>
+{% elif page.object_list %}
+  <div class="card"><ul class="thread-list">{% for thread in page %}{% include "_thread_row.html" with show_category=True %}{% endfor %}</ul></div>
+  {% include "_pagination.html" %}
+{% else %}
+  <div class="card empty"><h2>No matches</h2><p>Try different words.</p></div>
+{% endif %}
+{% endblock %}

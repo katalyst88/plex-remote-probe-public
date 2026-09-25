@@ -1,0 +1,40 @@
+{% extends "base.html" %}{% load humanize %}
+{% block title %}{{ member.name }} · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="card card-pad" style="display:flex;gap:18px;align-items:center;flex-wrap:wrap">
+  <span class="avatar lg" aria-hidden="true">{{ member.initials }}</span>
+  <div style="flex:1;min-width:200px">
+    <h1 style="margin:0">{{ member.name }}</h1>
+    <div class="helptext">@{{ member.username }}{% if member.location %} &middot; {{ member.location }}{% endif %} &middot; joined {{ member.date_joined|date:"F Y" }}
+      {% if member.is_staff %}<span class="pill">Team</span>{% elif member.has_active_membership %}<span class="pill green">Member</span>{% endif %}</div>
+    {% if member.bio %}<p style="margin:.6em 0 0">{{ member.bio|linebreaksbr }}</p>{% endif %}
+  </div>
+  {% if user == member %}<a class="btn secondary" href="{% url 'accounts:edit_profile' %}">Edit profile</a>{% endif %}
+</div>
+
+<h2 class="section-label">At a glance</h2>
+<div class="stats">
+  <div class="stat berry"><b>{{ post_count|intcomma }}</b><span>posts</span></div>
+  <div class="stat green"><b>{{ member.threads.count|intcomma }}</b><span>threads started</span></div>
+  <div class="stat"><b>{{ likes_received|intcomma }}</b><span>likes received</span></div>
+  <div class="stat ink-green"><b>{{ member.date_joined|timesince|truncatewords:2|cut:"," }}</b><span>with us</span></div>
+</div>
+
+<div class="layout-2" style="margin-top:8px">
+  <div>
+    <h2 class="section-label">Threads</h2>
+    <div class="card">
+      {% if threads %}<ul class="thread-list">{% for thread in threads %}{% include "_thread_row.html" with show_category=True %}{% endfor %}</ul>
+      {% else %}<div class="empty">No threads yet.</div>{% endif %}
+    </div>
+  </div>
+  <aside class="sidebar">
+    <h2 class="section-label">Recent posts</h2>
+    <div class="card card-pad">
+      {% if posts %}<ul class="mini-list">{% for post in posts %}
+        <li><a href="{% url 'boards:post' post.pk %}">{{ post.thread.title }}</a><small>{{ post.body|truncatechars:90 }} &middot; {{ post.created_at|naturaltime }}</small></li>
+      {% endfor %}</ul>{% else %}<p class="helptext">Nothing yet.</p>{% endif %}
+    </div>
+  </aside>
+</div>
+{% endblock %}

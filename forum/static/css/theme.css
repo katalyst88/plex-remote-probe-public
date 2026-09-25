@@ -1,0 +1,78 @@
+/*
+ * Brand tokens — the only file to edit when the name, logo or palette changes.
+ * Colours sampled from shesosavvy.jd-plex.com.
+ */
+:root {
+  /* Plum / berry family */
+  --plum-900: #2a0a1a;   /* bottom nav, deepest */
+  --plum-800: #3a0f24;   /* browser chrome / hero start */
+  --plum-700: #5a1a36;
+  --berry-600: #8a2350;  /* hero end */
+  --berry-500: #a02c5c;  /* primary buttons, active pills */
+  --berry-400: #b8416f;
+  --berry-ink: #7a1f45;  /* section labels */
+  --pink-300: #f07aa8;   /* the italic "so" accent, active tab */
+  --pink-100: #f8d7e3;
+
+  /* Greens */
+  --green-600: #2f7355;
+  --green-700: #2a5e45;
+  --green-ink: #2e6b4f;
+
+  /* Teal (logo tile) */
+  --teal-400: #5aa9a6;
+  --teal-600: #2a6f75;
+
+  /* Neutrals */
+  --cream-50: #fffbf7;   /* card surface */
+  --cream-100: #f6efea;  /* page background */
+  --cream-200: #eadcd4;  /* borders */
+  --mauve-600: #6d4a5e;  /* muted stat text */
+  --ink-900: #2b1a22;
+
+  /* Semantic roles */
+  --bg: var(--cream-100);
+  --surface: var(--cream-50);
+  --surface-sunk: #f1e7e1;
+  --border: var(--cream-200);
+  --text: var(--ink-900);
+  --text-muted: var(--mauve-600);
+  --primary: var(--berry-500);
+  --primary-hover: var(--berry-600);
+  --primary-text: #fff;
+  --accent: var(--pink-300);
+  --label: var(--berry-ink);
+  --rule: var(--pink-100);
+  --success: var(--green-600);
+  --success-ink: var(--green-ink);
+  --danger: #b3261e;
+  --hero-from: var(--plum-800);
+  --hero-to: var(--berry-600);
+  --nav-bg: var(--plum-900);
+
+  --font-display: "Fraunces", "DM Serif Display", Georgia, serif;
+  --font-body: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+
+  --radius-sm: 10px;
+  --radius: 18px;
+  --radius-pill: 999px;
+  --shadow: 0 1px 2px rgba(58, 15, 36, .06), 0 4px 16px rgba(58, 15, 36, .06);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #1c0b14;
+    --surface: #2a1320;
+    --surface-sunk: #230f1a;
+    --border: #452536;
+    --text: #f6eef1;
+    --text-muted: #c7a9b8;
+    --label: var(--pink-300);
+    --rule: #4a2638;
+    --primary: #c23d74;
+    --primary-hover: #d24d84;
+    --success-ink: #6cc39b;
+    --nav-bg: #12060c;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 4px 16px rgba(0, 0, 0, .25);
+  }
+}

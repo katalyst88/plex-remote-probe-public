@@ -1,0 +1,67 @@
+{% extends "base.html" %}{% load humanize forum_tags %}
+{% block title %}{{ thread.title }} · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="crumbs"><a href="{% url 'boards:index' %}">Forum</a> / <a href="{{ thread.category.get_absolute_url }}">{{ thread.category.name }}</a> /</div>
+    <h1>{{ thread.title }}</h1>
+    <p>
+      {% if thread.is_pinned %}<span class="pill">Pinned</span>{% endif %}
+      {% if thread.is_locked %}<span class="pill plum">Locked</span>{% endif %}
+      Started by <a href="{{ thread.author.get_absolute_url }}">{{ thread.author.name }}</a> {{ thread.created_at|naturaltime }} &middot; {{ thread.view_count|add:1|intcomma }} views
+    </p>
+  </div>
+  {% if user.is_staff %}
+  <div class="form-actions">
+    <form method="post" action="{% url 'boards:moderate' thread.pk 'pin' %}">{% csrf_token %}<button class="btn small secondary">{% if thread.is_pinned %}Unpin{% else %}Pin{% endif %}</button></form>
+    <form method="post" action="{% url 'boards:moderate' thread.pk 'lock' %}">{% csrf_token %}<button class="btn small secondary">{% if thread.is_locked %}Unlock{% else %}Lock{% endif %}</button></form>
+  </div>
+  {% endif %}
+</div>
+
+{% for post in page %}
+<article class="card post" id="post-{{ post.pk }}">
+  <div class="post-author">
+    <span class="avatar" aria-hidden="true">{{ post.author.initials }}</span>
+    <div>
+      <a class="name" href="{{ post.author.get_absolute_url }}">{{ post.author.name }}</a>
+      <span class="role">{% if post.author.is_staff %}Team{% elif post.author == thread.author %}Original poster{% else %}Member{% endif %}</span>
+    </div>
+  </div>
+  <div class="post-main">
+    <div class="post-meta">
+      <span>{{ post.created_at|naturaltime }}{% if post.edited_at %} &middot; <span class="edited" title="{{ post.edited_at }}">edited</span>{% endif %}</span>
+      <a href="{% url 'boards:post' post.pk %}" title="Link to this post">#{{ page.start_index|add:forloop.counter0 }}</a>
+    </div>
+    <div class="post-body">{{ post.body|markdown }}</div>
+    <div class="post-actions">
+      {% if user.is_authenticated and user != post.author %}
+        <form method="post" action="{% url 'boards:like' post.pk %}">{% csrf_token %}
+          <button class="like{% if post.pk in liked %} on{% endif %}" aria-pressed="{% if post.pk in liked %}true{% else %}false{% endif %}">&hearts; {{ post.like_count }}</button>
+        </form>
+      {% else %}
+        <button class="like" disabled>&hearts; {{ post.like_count }}</button>
+      {% endif %}
+      {% if user.is_staff or user == post.author and not thread.is_locked %}
+        <a href="{% url 'boards:edit_post' post.pk %}">Edit</a>
+        <a href="{% url 'boards:delete_post' post.pk %}">{% if post.pk == first_post_id %}Delete thread{% else %}Delete{% endif %}</a>
+      {% endif %}
+    </div>
+  </div>
+</article>
+{% endfor %}
+{% include "_pagination.html" %}
+
+<h2 class="section-label" id="reply">Reply</h2>
+{% if can_reply %}
+<form class="card card-pad" method="post" action="{% url 'boards:reply' thread.pk %}">
+  {% csrf_token %}
+  {% include "_field.html" with field=form.body %}
+  <div class="form-actions"><button class="btn" type="submit">Post reply</button></div>
+</form>
+{% elif thread.is_locked %}
+<div class="card empty">This thread is locked. No new replies.</div>
+{% elif not user.is_authenticated %}
+<div class="card empty"><p>Log in to join this discussion.</p><a class="btn" href="{% url 'accounts:login' %}?next={{ request.path|urlencode }}">Log in</a> <a class="btn secondary" href="{% url 'accounts:signup' %}">Create account</a></div>
+{% endif %}
+{% endblock %}

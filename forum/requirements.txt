@@ -1,0 +1,6 @@
+Django>=5.2,<5.3
+Markdown>=3.6
+bleach>=6.1
+# Hosting: uncomment when deploying behind a WSGI server with Postgres.
+# gunicorn>=22
+# psycopg[binary]>=3.2

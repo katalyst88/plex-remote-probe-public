@@ -1,0 +1,15 @@
+{% extends "base.html" %}{% load forum_tags %}
+{% block title %}Delete · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="form-card">
+  <h1>Delete {% if is_opening %}this whole thread{% else %}this reply{% endif %}?</h1>
+  <div class="card card-pad stack">
+    {% if is_opening %}<p><strong>{{ post.thread.title }}</strong> and all of its replies will be removed. This can't be undone.</p>
+    {% else %}<div class="post-body">{{ post.body|markdown|truncatewords_html:60 }}</div>{% endif %}
+    <form method="post" class="form-actions">{% csrf_token %}
+      <button class="btn danger" type="submit">Delete</button>
+      <a href="{% url 'boards:post' post.pk %}">Cancel</a>
+    </form>
+  </div>
+</div>
+{% endblock %}
